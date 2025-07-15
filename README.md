@@ -1,126 +1,180 @@
-# Log Analyzer
+# 📊 Log Analyzer 
 
-A Go-based high-performance log analysis system for processing and analyzing large volumes of log data with concurrency and race condition handling.
+A high-concurrency log ingestion and analytics system built in Go.  
+This project simulates real-world backend challenges like message queue ingestion, batch aggregation, caching, and system observability — all built with **Clean Architecture** and **modular services**.
+
+
+## ✨ Features
+
+- Modular service design (API, Ingestor, Batch Job)
+- Kafka-based log ingestion (async + scalable)
+- PostgreSQL log storage & denormalized summary tables
+- RESTful APIs with Gin + Redis caching
+- Batch job for daily aggregation & keyword stats
+- Prometheus metrics / pprof profiling / graceful shutdown
+- CI/CD with GitHub Actions & containerized environment
 
 ---
 
 ## 🗂 Project Structure
 
-```
+```bash
 log-analyzer/
 ├── cmd/
-│ └── log-analyzer/ # Main application entry point
+│   ├── api-server/        # REST API server (dashboard & stats)
+│   ├── log-ingestor/      # Kafka consumer to persist logs to DB
+│   └── batch-job/         # Daily aggregation job
 ├── internal/
-│ ├── api/ # HTTP API server (Gin)
-│ ├── config/ # Configuration logic
-│ ├── generator/ # Concurrent log generator
-│ ├── processor/ # Log processing logic
-│ ├── storage/ # Thread-safe statistics storage
-│ └── metrics/ # (Planned) Prometheus integration
-├── pkg/
-│ └── analyzer/ # Public log model (e.g. Log struct)
-├── config/
-│ └── config.yaml # (Planned) Config file for rate, keywords
+│   ├── domain/            # Entity models & interface definitions
+│   ├── usecase/           # Application logic (analyze, query, etc.)
+│   ├── infrastructure/    # DB, Redis, Kafka adapters
+│   ├── interface/         
+│   │   ├── http/          # REST handlers
+│   │   └── grpc/          # (Optional) gRPC handlers
+│   └── scheduler/         # cron-like batch executor
+├── pkg/                   # Shared utilities and log models
+├── migrations/            # DB migration SQL
+├── config/                # YAML/env configuration
+├── deploy/                # Docker Compose, CI/CD files
+└── README.md
 ```
 
----
+📦 Services Overview
+| Service	|Description|
+|----|-----|
+|api-server|	Exposes REST APIs for log stats/dashboard|
+|log-ingestor|	Listens to Kafka and writes logs to DB|
+|batch-job	|Aggregates daily user stats and keywords|
 
-## 🚀 Getting Started
+## 🧩 Phase Roadmap
+### ✅ Phase 1: MVP Setup - Kafka Ingestion
+Focus: replacing in-memory storage with Kafka → PostgreSQL
 
-### ✅ Prerequisites
+- [ ] Set up Kafka + Zookeeper via Docker Compose
 
-- Go 1.21 or higher (recommended: 1.24.2)
+- [ ] Create Kafka Producer (mock log generator)
 
-### 📦 Installation
+- [ ] Create Kafka Consumer service (log-ingestor)
 
-🛠 Build Binary
+- [ ] Design PostgreSQL schema log_raw (normalized)
+
+- [ ] Implement LogRepository interface
+
+- [ ] Abstract Kafka via QueueSubscriber interface
+
+- [ ] Add graceful shutdown & error handling for workers
+
+### 🚀 Phase 2: API Server + Redis Cache
+Focus: API endpoints + caching for dashboard queries
+
+- [ ] Create REST API server using Gin (api-server)
+
+- [ ] Define routes:
+
+    - /stats/errors?window=10s
+
+    - /stats/keywords?q=timeout
+
+- [ ] Add Redis cache layer for recent queries
+
+- [ ] Implement fallback: Redis miss → DB → re-cache
+
+- [ ] Add JWT-based auth (optional)
+
+### 📊 Phase 3: Batch Job for Aggregation
+Focus: summary tables and offline aggregation logic
+
+- [ ] Create batch-job binary
+
+- [ ] Cron schedule aggregation every 1 day
+
+- [ ] Create table user_log_summary (denormalized)
+
+- [ ] Aggregate: total logs, error rate, keyword frequency
+
+- [ ] Insert into summary table
+
+- [ ] Track & log invalid/malformed rows
+
+### ☁️ Phase 4: Observability & Metrics
+Focus: system introspection & monitoring
+
+- [ ] Add Prometheus metrics (/metrics)
+
+    - log ingestion rate
+
+    - error count per worker
+
+    - batch job duration
+
+- [ ] Enable pprof (/debug/pprof)
+
+- [ ] Add structured logging (zap or zerolog)
+
+- [ ] Log collector ready (stdout or file)
+
+### 🔁 Phase 5: CI/CD + Deploy
+Focus: DevOps and reproducible environments
+
+- [ ] Create docker-compose.yml with:
+    - Kafka + Zookeeper
+    - PostgreSQL
+    - Redis
+    - All 3 services
+
+- [ ] Add .env and YAML config loaders
+
+- [ ] Create GitHub Actions workflow:
+    - test
+    - lint
+    - docker build
+- [ ] Add Makefile for build/dev tasks
+
+🛠 Tools Used
+|Area	    |Tech|
+|-----------|-----|
+|Language	|Go 1.21+|
+|Queue	    |Kafka (segmentio/kafka-go)|
+|DB	        |PostgreSQL / SQLite|
+|API        |	Gin|
+|Cache      |	Redis (go-redis)|
+|Metrics	|Prometheus client_golang|
+|Profiling	|net/http/pprof|
+|Testing	|Go test, stretchr/testify|
+|Deployment	|Docker, GitHub Actions|
+
+📌 How to Run (MVP Phase)
+```
 bash
-```
-go build -o bin/log-analyzer cmd/log-analyzer/main.go
-./bin/log-analyzer
-```
-📡 HTTP API Endpoints
-Endpoint	Description
-/stats/errors	Get total count of error logs
-/stats/all	Get all log stats (info/warn/error)
-/health	Health check
+# Start Kafka + PostgreSQL + services
+docker-compose up -d
 
-Test with:
+# Run log producer to push logs into Kafka
+go run cmd/log-generator/main.go
 
-bash
-```
+# Run Kafka consumer to persist to DB
+go run cmd/log-ingestor/main.go
+
+# Start API server
+go run cmd/api-server/main.go
+
+# Check stats
 curl http://localhost:8080/stats/errors
-curl http://localhost:8080/stats/all
 ```
+## 🧠 Key Concepts Practiced
+- Clean Architecture in Go
+- Message queue (Kafka) consumer pipelines
+- High-concurrency goroutine orchestration
+- Time-windowed stat computation
+- Caching & fallback strategies (Redis)
+- System observability with Prometheus
+- Modular service decomposition
 
-## ✅ Implemented Components
-Log structure with timestamp, level, and message (pkg/analyzer/log.go)
+## 🧪 Future Ideas
+- gRPC endpoints with protobuf
+- SQLite fallback mode (embedded DB)
+- Live dashboard with WebSocket streaming
+- ElasticSearch log search integration
 
-Log generator with multiple goroutines and channels (internal/generator)
-
-Log processor for real-time error counting (internal/processor)
-
-Thread-safe statistics storage using sync.Mutex (internal/storage)
-
-HTTP API with Gin framework (internal/api/server.go)
-
-Graceful shutdown on OS signals
-
-## 📍 Roadmap
-
-### 🧩 Phase 1: MVP
-
-- Define log structure
-
-- Implement generator (3 workers, 100 logs/sec)
-
-- Implement processor (2 workers)
-
-- Thread-safe storage (mutex)
-
-- HTTP API: /stats/errors, /health
-
-- Graceful shutdown
-
-### 🚦 Phase 2: Concurrency Experiments
-
-- Add alternative storage: sync.Map
-
-- Channel-based actor pattern
-
-- Benchmark and compare performance
-
-- Integrate net/http/pprof
-
-### 📊 Phase 3: Advanced Stats
-
-- Keyword counting (e.g. timeout)
-
-- Time-windowed stats (last 10s)
-
-- New API: /stats/keyword?q=timeout, /stats/errors?window=10s
-
-☁️ Phase 4: Observability and Config
-- Add Prometheus metrics
-
-- Persist log stats (file or SQLite)
-
-- Use context.Context for goroutine management
-
-- External config file for log rate and keywords
-
-### 🧪 Development Tools
-
-Purpose	Tool
-Race detection	go run -race
-Benchmarking	testing.B
-Profiling	net/http/pprof
-Logging	log / zerolog / zap
-Metrics	prometheus/client_golang
-
-### 🧹 Graceful Shutdown
-
-Uses os/signal to handle SIGINT/SIGTERM
-
-Waits for all goroutines to complete using sync.WaitGroup
-
+### 🧑‍💻 Author
+Ann Chen

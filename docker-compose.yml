@@ -1,0 +1,82 @@
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: loguser
+      POSTGRES_PASSWORD: logpass
+      POSTGRES_DB: logdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+
+  # Placeholders for your Go services
+
+  api-server:
+    build:
+      context: .
+      dockerfile: ./deploy/api-server.Dockerfile
+    container_name: api-server
+    depends_on:
+      - kafka
+      - postgres
+      - redis
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+
+  # log-ingestor:
+  #   build:
+  #     context: .
+  #     dockerfile: ./deploy/log-ingestor.Dockerfile
+  #   container_name: log-ingestor
+  #   depends_on:
+  #     - kafka
+  #     - postgres
+  #   env_file:
+  #     - .env
+
+  # batch-job:
+  #   build:
+  #     context: .
+  #     dockerfile: ./deploy/batch-job.Dockerfile
+  #   container_name: batch-job
+  #   depends_on:
+  #     - postgres
+  #   env_file:
+  #     - .env
+
+volumes:
+  pgdata:

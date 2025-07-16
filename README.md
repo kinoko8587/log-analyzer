@@ -50,9 +50,9 @@ log-analyzer/
 ### ✅ Phase 1: MVP Setup - Kafka Ingestion
 Focus: replacing in-memory storage with Kafka → PostgreSQL
 
-- [ ] Set up Kafka + Zookeeper via Docker Compose
+- [x] Set up Kafka + Zookeeper via Docker Compose
 
-- [ ] Create Kafka Producer (mock log generator)
+- [x] Create Kafka Producer (mock log generator)
 
 - [ ] Create Kafka Consumer service (log-ingestor)
 

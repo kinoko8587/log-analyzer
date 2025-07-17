@@ -2,72 +2,70 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
+	"fmt"
 	"log"
-	"math/rand"
-	"time"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/segmentio/kafka-go"
+	"github.com/joho/godotenv"
+	"github.com/pinjung/log-analyzer/internal/infrastructure/db"
+	"github.com/pinjung/log-analyzer/internal/infrastructure/kafka"
 )
 
-// Log defines the mock log format
-type Log struct {
-	UserID    string    `json:"user_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Level     string    `json:"level"` // info, warn, error
-	Message   string    `json:"message"`
+func getPostgresDSN() string {
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"),
+		os.Getenv("POSTGRES_HOST"),
+		os.Getenv("POSTGRES_PORT"),
+		os.Getenv("POSTGRES_DB"),
+		os.Getenv("POSTGRES_SSL"),
+	)
 }
 
-var levels = []string{"info", "warn", "error"}
-var messages = []string{
-	"User login",
-	"Payment timeout",
-	"Internal server error",
-	"Request completed",
-	"DB query slow",
-	"Unauthorized access",
-}
-
-func generateLog() Log {
-	return Log{
-		UserID:    randomUser(),
-		Timestamp: time.Now(),
-		Level:     levels[rand.Intn(len(levels))],
-		Message:   messages[rand.Intn(len(messages))],
-	}
-}
-
-func randomUser() string {
-	return "user_" + string(rune(rand.Intn(100)+65)) // user_A ~ user_ZZ
+func getKafkaConfig() (brokers []string, topic string, groupID string) {
+	brokers = []string{os.Getenv("KAFKA_BROKERS")} // 支援多 broker 時可改 split
+	topic = os.Getenv("KAFKA_TOPIC")
+	groupID = os.Getenv("KAFKA_GROUP_ID")
+	return
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
-	kafkaWriter := kafka.NewWriter(kafka.WriterConfig{
-		Brokers: []string{"localhost:9092"},
-		Topic:   "logs.ingest",
-		Async:   true,
-	})
-	defer kafkaWriter.Close()
-
-	log.Println("🚀 Log generator started...")
-	ticker := time.NewTicker(10 * time.Millisecond) // ~100 logs/sec
-	defer ticker.Stop()
-
-	for {
-		<-ticker.C
-		logData := generateLog()
-
-		value, _ := json.Marshal(logData)
-
-		err := kafkaWriter.WriteMessages(context.Background(), kafka.Message{
-			Key:   []byte(logData.UserID),
-			Value: value,
-		})
-
-		if err != nil {
-			log.Printf("❌ failed to write: %v\n", err)
-		}
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️  No .env file found, relying on system env vars")
 	}
+
+	connStr := getPostgresDSN()
+	dbConn, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatalf("DB connect error: %v", err)
+	}
+	defer dbConn.Close()
+
+	repo := db.NewPostgresLogRepository(dbConn)
+
+	kafkaBrokers, kafkaTopic, kafkaGroupID := getKafkaConfig()
+	consumer := kafka.NewConsumer(
+		kafkaBrokers,
+		kafkaTopic,
+		kafkaGroupID,
+		repo,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := consumer.Start(ctx); err != nil {
+			log.Fatalf("Consumer failed: %v", err)
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	log.Println("🛑 Shutting down log-ingestor...")
+	cancel()
 }

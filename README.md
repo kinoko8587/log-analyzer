@@ -54,15 +54,15 @@ Focus: replacing in-memory storage with Kafka → PostgreSQL
 
 - [x] Create Kafka Producer (mock log generator)
 
-- [ ] Create Kafka Consumer service (log-ingestor)
+- [x] Create Kafka Consumer service (log-ingestor)
 
-- [ ] Design PostgreSQL schema log_raw (normalized)
+- [x] Design PostgreSQL schema log_raw (normalized)
 
-- [ ] Implement LogRepository interface
+- [x] Implement LogRepository interface
 
-- [ ] Abstract Kafka via QueueSubscriber interface
+- [x] Abstract Kafka via QueueSubscriber interface
 
-- [ ] Add graceful shutdown & error handling for workers
+- [x] Add graceful shutdown & error handling for workers
 
 ### 🚀 Phase 2: API Server + Redis Cache
 Focus: API endpoints + caching for dashboard queries

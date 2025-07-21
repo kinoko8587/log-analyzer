@@ -2,29 +2,16 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/pinjung/log-analyzer/internal/infrastructure/db"
 	"github.com/pinjung/log-analyzer/internal/infrastructure/kafka"
 )
-
-func getPostgresDSN() string {
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		os.Getenv("POSTGRES_USER"),
-		os.Getenv("POSTGRES_PASSWORD"),
-		os.Getenv("POSTGRES_HOST"),
-		os.Getenv("POSTGRES_PORT"),
-		os.Getenv("POSTGRES_DB"),
-		os.Getenv("POSTGRES_SSL"),
-	)
-}
 
 func getKafkaConfig() (brokers []string, topic string, groupID string) {
 	brokers = []string{os.Getenv("KAFKA_BROKERS")} // 支援多 broker 時可改 split
@@ -38,14 +25,10 @@ func main() {
 		log.Println("⚠️  No .env file found, relying on system env vars")
 	}
 
-	connStr := getPostgresDSN()
-	dbConn, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatalf("DB connect error: %v", err)
-	}
-	defer dbConn.Close()
+	bunDB := db.NewBunDB()
+	defer bunDB.Close()
 
-	repo := db.NewPostgresLogRepository(dbConn)
+	repo := db.NewPostgresLogRepository(bunDB)
 
 	kafkaBrokers, kafkaTopic, kafkaGroupID := getKafkaConfig()
 	consumer := kafka.NewConsumer(
@@ -56,16 +39,43 @@ func main() {
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	errChan := make(chan error, 1)
 	go func() {
 		if err := consumer.Start(ctx); err != nil {
-			log.Fatalf("Consumer failed: %v", err)
+			errChan <- err
 		}
 	}()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+
+	select {
+	case <-stop:
+		log.Println("🛑 Received shutdown signal...")
+	case err := <-errChan:
+		log.Printf("❌ Consumer error: %v", err)
+	}
+
 	log.Println("🛑 Shutting down log-ingestor...")
 	cancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		if err := consumer.Close(); err != nil {
+			log.Printf("❌ Error closing consumer: %v", err)
+		}
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		log.Println("✅ Graceful shutdown completed")
+	case <-shutdownCtx.Done():
+		log.Println("⚠️  Shutdown timeout exceeded")
+	}
 }

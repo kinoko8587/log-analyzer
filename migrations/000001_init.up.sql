@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS log_raw (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL,
+  timestamp TIMESTAMP NOT NULL,
+  level VARCHAR(10) NOT NULL,
+  message TEXT
+);

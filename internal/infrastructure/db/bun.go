@@ -1,7 +1,7 @@
 package db
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
 	"os"
 
@@ -19,8 +19,8 @@ func NewBunDB() *bun.DB {
 		os.Getenv("POSTGRES_DB"),
 	)
 
-	sqldb := pgdriver.NewConnector(pgdriver.WithDSN(dsn))
-	db := bun.NewDB(sqldb.Connect(context.Background()), pgdialect.New())
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	db := bun.NewDB(sqldb, pgdialect.New())
 
 	return db
 }
